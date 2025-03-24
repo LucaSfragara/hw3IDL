@@ -1,0 +1,3 @@
+- Try downsampling in cnn embedding
+- try resnet with more layers
+- modify decoder mlp
