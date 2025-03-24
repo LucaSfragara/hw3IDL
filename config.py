@@ -13,7 +13,7 @@ config = {
   "lstm_dropout": 0.2,
   "decoder_dropout": 0.2,
   "use_wandb": True,
-  "root_dir": "/local/11785-S25-hw3p2",
+  "root_dir": "/local/slurm-29786129/local/11785-S25-hw3p2",
   "name": "Luca Sfragara",  
   "weight_decay": 0.0001
 }

@@ -247,11 +247,11 @@ class Decoder(torch.nn.Module):
             #Now you can stack your MLP layers
             # MLP layers with dropout for regularization
             
-            torch.nn.Linear(2 * lstm_hidden_size, 512),
+            torch.nn.Linear(2 * lstm_hidden_size, lstm_hidden_size),
             torch.nn.ReLU(),
             torch.nn.Dropout(0.2),
             
-            torch.nn.Linear(512, 256),
+            torch.nn.Linear(lstm_hidden_size, lstm_hidden_size),
             torch.nn.ReLU(),
             torch.nn.Dropout(0.2),
             

@@ -1,26 +1,10 @@
-from symbol import comp_for
-from turtle import mode
 import torch
-import random
-import numpy as np
-import pandas as pd
-
-import torch.nn as nn
-import torch.nn.functional as F
 from torchinfo import summary
-from torch.utils.data import Dataset, DataLoader
-from torch.nn.utils.rnn import pad_sequence, pack_padded_sequence, pad_packed_sequence
+from torch.utils.data import DataLoader
 import wandb
-import torchaudio.transforms as tat
+
 from torchaudio.models.decoder import cuda_ctc_decoder
 import Levenshtein
-
-from sklearn.metrics import accuracy_score
-import gc
-
-import glob
-
-import zipfile
 from tqdm.auto import tqdm
 import os
 import datetime
@@ -37,6 +21,8 @@ from dataset import AudioDataset
 from BasicNetwork import BasicNetwork
 
 from phonemes_utils import PHONEMES, LABELS, BLANK_IDX
+from decode_utils import decode_prediction, calculate_levenshtein
+from train_utils import train_model, validate_model
 
 train_data = AudioDataset(config['root_dir'], 'train-clean-100', config['subset'])
 train_loader = DataLoader(train_data, batch_size=config["batch_size"], shuffle=True, collate_fn=train_data.collate_fn, num_workers=128)
@@ -79,135 +65,6 @@ scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=
 # Mixed Precision, if you need it
 scaler = torch.cuda.amp.GradScaler()
 
-
-def decode_prediction(output, output_lens, decoder, PHONEME_MAP=LABELS):
-    """
-    Decode model output to phoneme strings using CTC decoder
-    
-    Args:
-        output: Log probabilities from the model [B, T, V]
-        output_lens: Lengths of each sequence in the batch
-        decoder: CTC decoder instance
-        PHONEME_MAP: Mapping from indices to phoneme characters
-    """
-    # Ensure output is contiguous
-    output = output.contiguous()
-    output_lens = output_lens.to(torch.int32).contiguous()
-    beam_results = decoder(output, output_lens.to(torch.int32))
-    pred_strings = []
-    
-    for i in range(len(beam_results)):
-        
-        top_beam_results = beam_results[i][0].tokens
-        
-        labels = [PHONEME_MAP[t] for t in top_beam_results]
-        pred_string = ''.join(labels)
-        pred_strings.append(pred_string)
-    
-
-    return pred_strings
-
-def calculate_levenshtein(output, label, output_lens, label_lens, decoder, PHONEME_MAP=LABELS):
-    dist = 0
-    batch_size = label.shape[0]
-
-    pred_strings = decode_prediction(output, output_lens, decoder, PHONEME_MAP)
-
-    for i in range(batch_size):
-        # Get the actual label string for this sample
-        # Convert the label indices to phonemes and join them
-        label_string = [PHONEME_MAP[t] for t in label[i][:label_lens[i]]]
-        
-        # Get the predicted string from decode_prediction
-        pred_string = pred_strings[i]
-
-        # Calculate Levenshtein distance between predicted and actual strings
-        dist += Levenshtein.distance(pred_string, label_string)
-
-    # Average the distance over the batch
-    dist /= batch_size  # We average to get a normalized metric independent of batch size
-    return dist
-
-
-    
-last_epoch_completed = 0
-best_lev_dist = float("inf")
-
-
-# Train function
-def train_model(model, train_loader, criterion, optimizer):
-
-    model.train()
-    batch_bar = tqdm(total=len(train_loader), dynamic_ncols=True, leave=False, position=0, desc='Train')
-
-    total_loss = 0
-
-    for i, data in enumerate(train_loader):
-        optimizer.zero_grad()
-
-        x, y, lx, ly = data
-        x, y = x.to(device), y.to(device)
-        lx, ly = lx.to(device), ly.to(device)
-
-        with torch.cuda.amp.autocast():
-            h, lh = model(x, lx)
-            h = torch.permute(h, (1, 0, 2))
-            loss = criterion(h, y, lh, ly)
-
-        total_loss += loss.item()
-
-        batch_bar.set_postfix(
-            loss="{:.04f}".format(float(total_loss / (i + 1))),
-            lr="{:.06f}".format(float(optimizer.param_groups[0]['lr'])))
-
-        batch_bar.update() # Update tqdm bar
-
-        scaler.scale(loss).backward() # This is a replacement for loss.backward()
-        scaler.step(optimizer) # This is a replacement for optimizer.step()
-        scaler.update() # This is something added just for FP16
-
-        del x, y, lx, ly, h, lh, loss
-        torch.cuda.empty_cache()
-
-    batch_bar.close() # You need this to close the tqdm bar
-
-    return total_loss / len(train_loader)
-
-
-# Eval function
-def validate_model(model, val_loader, decoder, phoneme_map = LABELS):
-
-    model.eval()
-    batch_bar = tqdm(total=len(val_loader), dynamic_ncols=True, position=0, leave=False, desc='Val')
-
-    total_loss = 0
-    vdist = 0
-
-    for i, data in enumerate(val_loader):
-
-        x, y, lx, ly = data
-        x, y = x.to(device), y.to(device)
-        lx, ly = lx.to(device), ly.to(device)
-
-        with torch.inference_mode():
-            h, lh = model(x, lx)
-            h = torch.permute(h, (1, 0, 2))
-            loss = criterion(h, y, lh, ly)
-
-        total_loss += loss.item()
-        vdist += calculate_levenshtein(torch.permute(h, (1, 0, 2)), y, lh.to(device), ly, decoder, phoneme_map)
-
-        batch_bar.set_postfix(loss="{:.04f}".format(float(total_loss / (i + 1))), dist="{:.04f}".format(float(vdist / (i + 1))))
-
-        batch_bar.update()
-
-        del x, y, lx, ly, h, lh, loss
-        torch.cuda.empty_cache()
-
-    batch_bar.close()
-    total_loss = total_loss/len(val_loader)
-    val_dist = vdist/len(val_loader)
-    return total_loss, val_dist
 
 
 
@@ -270,6 +127,8 @@ if config["use_wandb"]:
 checkpoint_best_model_filename = 'checkpoint-best-model.pth'
 best_model_path = os.path.join(checkpoint_root, checkpoint_best_model_filename)
 
+last_epoch_completed = 0
+best_lev_dist = float('inf')
 
 for epoch in range(last_epoch_completed, config['epochs']):
 
@@ -300,6 +159,11 @@ for epoch in range(last_epoch_completed, config['epochs']):
         if valid_dist <= best_lev_dist:
             best_lev_dist = valid_dist
             save_model(model, optimizer, scheduler, ['valid_dist', valid_dist], epoch, best_model_path)
+            #save wandb artifact
+            artifact = wandb.Artifact(f'best_model_{run_name}', type='model')
+            artifact.add_file(best_model_path)
+            run.log_artifact(artifact)
+            
             if config['use_wandb']:
                 wandb.save(best_model_path)
             print("Saved best val model")

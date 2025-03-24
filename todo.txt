@@ -1,3 +1,6 @@
 - Try downsampling in cnn embedding
 - try resnet with more layers
 - modify decoder mlp
+- bring decoder more simple
+- add complexity to encoder
+- resnet 18
