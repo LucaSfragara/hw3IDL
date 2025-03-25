@@ -175,13 +175,18 @@ class Encoder(torch.nn.Module):
         #                  -> What should be the size of input channels to the first layer?
         self.embedding = torch.nn.Sequential(
             torch.nn.Conv1d(input_size, 64, kernel_size=3, stride=1, padding=1),
+            torch.nn.BatchNorm1d(64),
             torch.nn.GELU(approximate="none"), 
             torch.nn.Dropout(0.1, inplace=True),
+            
             torch.nn.Conv1d(64, 128, kernel_size=3, stride=1, padding=1),
+            torch.nn.BatchNorm1d(128),
             torch.nn.GELU(approximate="none"),
             torch.nn.Dropout(0.1, inplace=True),
-    
+
+            
             torch.nn.Conv1d(128, embedding_hidden_size, kernel_size=3, stride=1, padding=1),
+            torch.nn.BatchNorm1d(embedding_hidden_size),
             torch.nn.GELU(approximate="none"),
             torch.nn.Dropout(0.1, inplace=True),
         )
@@ -201,8 +206,8 @@ class Encoder(torch.nn.Module):
             LockedDropout(0.2),
             pBLSTM(2* lstm_hidden_size, lstm_hidden_size),
             LockedDropout(0.2),
-            pBLSTM(2* lstm_hidden_size, lstm_hidden_size),
-            LockedDropout(0.2),
+            #pBLSTM(2* lstm_hidden_size, lstm_hidden_size),
+            #LockedDropout(0.2),
         )
 
     def forward(self, x, x_lens):
@@ -248,11 +253,11 @@ class Decoder(torch.nn.Module):
             # MLP layers with dropout for regularization
             
             torch.nn.Linear(2 * lstm_hidden_size, lstm_hidden_size),
-            torch.nn.ReLU(),
+            torch.nn.GELU(),
             torch.nn.Dropout(0.2),
             
             torch.nn.Linear(lstm_hidden_size, lstm_hidden_size),
-            torch.nn.ReLU(),
+            torch.nn.GELU(),
             torch.nn.Dropout(0.2),
             
             # Final projection layer to output_size (number of phonemes)

@@ -4,7 +4,7 @@ from torch.utils.data import DataLoader
 import wandb
 
 from torchaudio.models.decoder import cuda_ctc_decoder
-import Levenshtein
+
 from tqdm.auto import tqdm
 import os
 import datetime
@@ -12,6 +12,9 @@ import datetime
 from config import config
 import warnings
 warnings.filterwarnings('ignore')
+
+#set wandb environment variable
+os.environ["WANDB_DIR"]= "/tmp"
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 print("Device: ", device)
@@ -60,19 +63,17 @@ optimizer =  torch.optim.AdamW(model.parameters(), lr = config["learning_rate"],
 # CTC Decoder: https://pytorch.org/audio/2.1/generated/torchaudio.models.decoder.cuda_ctc_decoder.html
 decoder = cuda_ctc_decoder(tokens=LABELS, nbest=1, beam_size=config['train_beam_width']) 
 
-scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=5, T_mult=2, eta_min=config["learning_rate_min"], last_epoch=-1)
+#scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=5, T_mult=2, eta_min=config["learning_rate_min"], last_epoch=-1)
+scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max = config["epochs"], eta_min=config["learning_rate_min"], last_epoch=-1)
 
 # Mixed Precision, if you need it
 scaler = torch.cuda.amp.GradScaler()
 
 
-
-
-
 # If you are resuming an old run
 if config["use_wandb"]:
 
-    RESUME_LOGGING = False # Set this to true if you are resuming training from a previous run
+    RESUME_LOGGING = True # Set this to true if you are resuming training from a previous run
 
     # Create your wandb run
 
@@ -82,10 +83,9 @@ if config["use_wandb"]:
 
     if RESUME_LOGGING:
         run = wandb.init(
-            id     = "", ### Insert specific run id here if you want to resume a previous run
+            id     = "rofi9kkm", ### Insert specific run id here if you want to resume a previous run
             resume = "must", ### You need this to resume previous runs
-            project = "hw3p2-ablations", ### Project should be created in your wandb
-            settings = wandb.Settings(_service_wait=300)
+            project = "hw3p2", ### Project should be created in your wandb
         )
     else: 
         run = wandb.init(
@@ -124,11 +124,44 @@ os.makedirs(checkpoint_root, exist_ok=True)
 if config["use_wandb"]:
     wandb.watch(model, log="all")
 
+
+
+def load_model(path, model, optimizer= None, scheduler= None, scaler = None, metric='valid_dist'):
+
+    checkpoint = torch.load(path)
+    model.load_state_dict(checkpoint['model_state_dict'])
+
+    if optimizer != None:
+        optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+    if scheduler != None:
+        scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
+    if scaler != None:      
+        scaler.load_state_dict(checkpoint['scaler_state_dict'])
+    
+    epoch   = checkpoint['epoch']
+    metric  = checkpoint[metric]
+
+    print("\nResuming training from epoch:", epoch)
+    print('----------------------------------------\n')
+    print("Epochs left: ", config['epochs'] - epoch)
+    print("Optimizer: \n", optimizer)
+
+    print("Best Val Dist:", metric)
+
+    return [model, optimizer, scheduler, epoch, metric]
+
+
+
 checkpoint_best_model_filename = 'checkpoint-best-model.pth'
 best_model_path = os.path.join(checkpoint_root, checkpoint_best_model_filename)
 
 last_epoch_completed = 0
 best_lev_dist = float('inf')
+
+RESUME_TRAINING = True
+
+if RESUME_TRAINING:
+    model, optimizer, scheduler, last_epoch_completed, best_lev_dist = load_model(best_model_path, model, optimizer, scheduler, scaler, 'valid_dist')
 
 for epoch in range(last_epoch_completed, config['epochs']):
 
@@ -137,8 +170,8 @@ for epoch in range(last_epoch_completed, config['epochs']):
     curr_lr = optimizer.param_groups[0]['lr']
 
 
-    train_loss = train_model(model, train_loader, criterion, optimizer)
-    valid_loss, valid_dist = validate_model(model, val_loader, decoder, LABELS)
+    train_loss = train_model(model, train_loader, criterion, optimizer, scaler, device)
+    valid_loss, valid_dist = validate_model(model, val_loader, decoder, device, criterion, LABELS)
 
 
     scheduler.step()

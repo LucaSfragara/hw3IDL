@@ -224,7 +224,7 @@ class AudioDataset(torch.utils.data.Dataset):
 
         #apply time masking and frequency masking
         if self.val_dataset == False:
-            if random.random() < 0.5:
+            if random.random() < 0.3:
                 batch_mfcc_pad = batch_mfcc_pad.permute(0,2,1)
                 batch_mfcc_pad = self.freq_masking(batch_mfcc_pad)
                 batch_mfcc_pad = self.time_masking(batch_mfcc_pad)
