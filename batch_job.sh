@@ -10,7 +10,7 @@
 cd /local
 module load anaconda3
 conda activate env
-export WANDB_DIR = "/tmp"
+
 kaggle competitions download -c hw-3-p-2-automatic-speech-recognition-asr-11-785
 unzip -q hw-3-p-2-automatic-speech-recognition-asr-11-785.zip 
 cd /ocean/projects/cis250019p/sfragara/hw3

@@ -69,11 +69,12 @@ scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max = config
 # Mixed Precision, if you need it
 scaler = torch.cuda.amp.GradScaler()
 
+RESUME_TRAINING = False
 
 # If you are resuming an old run
 if config["use_wandb"]:
 
-    RESUME_LOGGING = True # Set this to true if you are resuming training from a previous run
+   
 
     # Create your wandb run
 
@@ -81,7 +82,7 @@ if config["use_wandb"]:
     
     wandb.login(key="11902c0c8e2c6840d72bf65f04894b432d85f019") #TODO
 
-    if RESUME_LOGGING:
+    if RESUME_TRAINING:
         run = wandb.init(
             id     = "rofi9kkm", ### Insert specific run id here if you want to resume a previous run
             resume = "must", ### You need this to resume previous runs
@@ -152,13 +153,12 @@ def load_model(path, model, optimizer= None, scheduler= None, scaler = None, met
 
 
 
-checkpoint_best_model_filename = 'checkpoint-best-model.pth'
+checkpoint_best_model_filename = 'checkpoint-best-model.pth_{}'.format(run_name)
 best_model_path = os.path.join(checkpoint_root, checkpoint_best_model_filename)
 
 last_epoch_completed = 0
 best_lev_dist = float('inf')
 
-RESUME_TRAINING = True
 
 if RESUME_TRAINING:
     model, optimizer, scheduler, last_epoch_completed, best_lev_dist = load_model(best_model_path, model, optimizer, scheduler, scaler, 'valid_dist')
@@ -168,7 +168,6 @@ for epoch in range(last_epoch_completed, config['epochs']):
     print("\nEpoch: {}/{}".format(epoch + 1, config['epochs']))
 
     curr_lr = optimizer.param_groups[0]['lr']
-
 
     train_loss = train_model(model, train_loader, criterion, optimizer, scaler, device)
     valid_loss, valid_dist = validate_model(model, val_loader, decoder, device, criterion, LABELS)

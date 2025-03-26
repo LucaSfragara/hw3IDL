@@ -193,7 +193,7 @@ class Encoder(torch.nn.Module):
 
         self.BLSTMs = LSTMWrapper(
             # TODO: Look up the documentation. You might need to pass some additional parameters.
-            torch.nn.LSTM(input_size=embedding_hidden_size, hidden_size=lstm_hidden_size, num_layers=2, bidirectional=True) #TODO
+            torch.nn.LSTM(input_size=embedding_hidden_size, hidden_size=lstm_hidden_size, num_layers=3, bidirectional=True) #TODO
         )
 
         self.pBLSTMs = torch.nn.Sequential( # How many pBLSTMs are required?
@@ -252,16 +252,30 @@ class Decoder(torch.nn.Module):
             #Now you can stack your MLP layers
             # MLP layers with dropout for regularization
             
-            torch.nn.Linear(2 * lstm_hidden_size, lstm_hidden_size),
+            torch.nn.Linear(2 * lstm_hidden_size, lstm_hidden_size //2),
+            Permute(),
+            torch.nn.BatchNorm1d(lstm_hidden_size//2),
+            Permute(),
             torch.nn.GELU(),
             torch.nn.Dropout(0.2),
             
-            torch.nn.Linear(lstm_hidden_size, lstm_hidden_size),
+            torch.nn.Linear(lstm_hidden_size//2, lstm_hidden_size//2),
+            Permute(),
+            torch.nn.BatchNorm1d(lstm_hidden_size//2),
+            Permute(),
             torch.nn.GELU(),
             torch.nn.Dropout(0.2),
+            
+            torch.nn.Linear(lstm_hidden_size//2, lstm_hidden_size//2),
+            Permute(),
+            torch.nn.BatchNorm1d(lstm_hidden_size//2),
+            Permute(),
+            torch.nn.GELU(),
+            torch.nn.Dropout(0.2),
+            
             
             # Final projection layer to output_size (number of phonemes)
-            torch.nn.Linear(256, output_size)
+            torch.nn.Linear(lstm_hidden_size//2, output_size)
 
         )
 

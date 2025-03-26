@@ -3,3 +3,7 @@ __pycache__
 wandb   
 .vscode
 checkpoints
+
+#all files starting with job_error and job_output
+job_error*
+job_output*
