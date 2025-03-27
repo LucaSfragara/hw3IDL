@@ -101,8 +101,8 @@ class AudioDataset(torch.utils.data.Dataset):
         # WHAT SHOULD THE LENGTH OF THE DATASET BE?
         self.length = len(mfcc_names) 
 
-        self.time_masking = torchaudio.transforms.TimeMasking(time_mask_param=20) #was 10 in original run
-        self.freq_masking = torchaudio.transforms.FrequencyMasking(freq_mask_param=20) #was 10 in original run
+        self.time_masking = torchaudio.transforms.TimeMasking(time_mask_param=config["augment_time_mask_max"]) #was 10 in original run
+        self.freq_masking = torchaudio.transforms.FrequencyMasking(freq_mask_param=config["augment_freq_mask_max"]) #was 10 in original run
         #TODO
         # CREATE AN ARRAY TO STORE ALL PROCESSED MFCCS AND TRANSCRIPTS
         # LOAD ALL MFCCS AND CORRESPONDING TRANSCRIPTS AND DO THE NECESSARY PRE-PROCESSING
@@ -224,7 +224,7 @@ class AudioDataset(torch.utils.data.Dataset):
 
         #apply time masking and frequency masking
         if self.val_dataset == False:
-            if random.random() < 0.5:
+            if random.random() < config["augment_prob"]:
                 batch_mfcc_pad = batch_mfcc_pad.permute(0,2,1)
                 batch_mfcc_pad = self.freq_masking(batch_mfcc_pad)
                 batch_mfcc_pad = self.time_masking(batch_mfcc_pad)
@@ -236,7 +236,133 @@ class AudioDataset(torch.utils.data.Dataset):
 
 
 class AudioDatasetTest(torch.utils.data.Dataset):
-    pass
+    
+    def __init__(self):
+        '''
+        Initializes the dataset.
+
+        INPUTS: What inputs do you need here?
+        '''
+
+        self.PHONEMES = PHONEMES
+
+
+        # Define the directories containing MFCC and transcript files
+        self.mfcc_dir = os.path.join(config['root_dir'], "test-clean", 'mfcc')
+
+        # List all files in the directories. Remember to sort the files
+        mfcc_names = os.listdir(self.mfcc_dir)
+        mfcc_names.sort()
+        
+        #if partition == "dev-clean":
+        #    self.subset = 1.0
+        
+        # Compute size of data subset
+       
+        # Select subset of data to use
+        
+        mfcc_names = mfcc_names
+       
+        # WHAT SHOULD THE LENGTH OF THE DATASET BE?
+        self.length = len(mfcc_names) 
+   
+        self.mfccs = []
+
+        for i in tqdm(range(len(mfcc_names))):
+
+            # Load a single mfcc. Hint: Use numpy
+           
+            mfcc = np.load(os.path.join(self.mfcc_dir, mfcc_names[i]))
+          
+            # Do Cepstral Normalization of mfcc along the Time Dimension (Think about the correct axis)
+            # Hint: You may want to use np.mean and np.std
+            mfcc_normalized = (mfcc - np.mean(mfcc)) / np.std(mfcc)
+            # Convert mfcc to tensor
+            mfcc_normalized = torch.tensor(mfcc_normalized, dtype=torch.float32)
+
+            # Load the corresponding transcript
+            # Remove [SOS] and [EOS] from the transcript
+            # (Is there an efficient way to do this without traversing through the transcript?)
+            # Note that SOS will always be in the starting and EOS at end, as the name suggests.
+        
+            # The available phonemes in the transcript are of string data type
+            # But the neural network cannot predict strings as such.
+            # Hence, we map these phonemes to integers
+
+            # Map the phonemes to their corresponding list indexes in self.phonemes
+            #creating phonemes dictionary for efficient index lookup
+           
+            # Append each mfcc to self.mfcc, transcript to self.transcript
+            self.mfccs.append(mfcc_normalized)
+    
+        '''
+        You may decide to do this in __getitem__ if you wish.
+        However, doing this here will make the __init__ function take the load of
+        loading the data, and shift it away from training.
+        '''
+        self.length = len(self.mfccs)
+        
+    
+    def __len__(self):
+
+        return self.length
+
+
+    def __getitem__(self, ind):
+
+        '''
+        RETURN THE MFCC COEFFICIENTS AND ITS CORRESPONDING LABELS
+
+        If you didn't do the loading and processing of the data in __init__,
+        do that here.
+
+        Once done, return a tuple of features and labels.
+
+        '''
+
+        mfcc = self.mfccs[ind]  
+        
+        return (mfcc,)
+
+
+    def collate_fn(self,batch):
+        '''
+        TODO:
+        1.  Extract the features and labels from 'batch'
+        2.  We will additionally need to pad both features and labels,
+            look at pytorch's docs for pad_sequence
+        3.  This is a good place to perform transforms, if you so wish.
+            Performing them on batches will speed the process up a bit.
+        4.  Return batch of features, labels, lenghts of features,
+            and lengths of labels.
+        '''
+
+        # Extract batch of input MFCCs and batch of output transcripts separately
+        # Extract features and labels from batch
+        batch_mfcc = [sample[0] for sample in batch]
+       
+        # Store original lengths of the MFCCS and transcripts in the batches
+        # Store original lengths    
+        lengths_mfcc = [mfcc.shape[0] for mfcc in batch_mfcc]  # Time dimension
+       
+        # Pad the MFCC sequences and transcripts
+        # HINT: CHECK OUT -> pad_sequence (imported above)
+        # Also be sure to check the input format (batch_first)
+        # Note: (resulting shape of padded MFCCs: [batch, time, freq])
+        
+        #pad all sequences to longest sequence in the batch
+        
+        batch_mfcc_pad = pad_sequence(batch_mfcc, batch_first=True)
+    
+        # TODO: You may apply some transformations, Time and Frequency masking, here in the collate function;
+        # Food for thought -> Why are we applying the transformation here and not in the __getitem__?
+        #                  -> Would we apply transformation on the validation set as well?
+        #                  -> Is the order of axes / dimensions as expected for the transform functions?
+        #                     -> Time & Freq. Masking functions both expect input of shape (..., freq, time),
+        #                        So permute your input dimensions appropriately before & after using these functions.
+
+        return batch_mfcc_pad, torch.tensor(lengths_mfcc).cpu()
+
 
 
 if __name__ == "__main__":

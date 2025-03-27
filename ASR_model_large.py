@@ -1,22 +1,15 @@
-from json import encoder
-from math import log
+
 import torch
-import random
 import numpy as np
-import pandas as pd
 
 import torch.nn as nn
-import torch.nn.functional as F
+
 from torchinfo import summary
-from torch.utils.data import Dataset, DataLoader
+
 from torch.nn.utils.rnn import pad_sequence, pack_padded_sequence, pad_packed_sequence
 
-import config
 from phonemes_utils import PHONEMES
-from tqdm.auto import tqdm
-from dataset import AudioDataset
 
-from config import config
 import warnings
 warnings.filterwarnings('ignore')
 
@@ -161,6 +154,48 @@ class pBLSTM(torch.nn.Module):
         
         return x_reshaped, x_lens_reshaped
     
+    
+class ResNetBlock(torch.nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size=3, stride=1, padding=1):
+        super(ResNetBlock, self).__init__()
+        
+        # First convolutional layer
+        self.conv1 = torch.nn.Conv1d(in_channels, out_channels, kernel_size, stride, padding)
+        self.bn1 = torch.nn.BatchNorm1d(out_channels)
+        self.gelu = torch.nn.GELU()
+        self.dropout1 = torch.nn.Dropout(0.1, inplace=True)
+        
+        # Second convolutional layer
+        self.conv2 = torch.nn.Conv1d(out_channels, out_channels, kernel_size, stride, padding)
+        self.bn2 = torch.nn.BatchNorm1d(out_channels)
+        self.dropout2 = torch.nn.Dropout(0.1, inplace=True)
+        
+        # Optional 1x1 convolution for matching dimensions if needed
+        self.residual = torch.nn.Conv1d(in_channels, out_channels, kernel_size=1) if in_channels != out_channels else None
+
+    def forward(self, x):
+        # Save the input for the skip connection
+  
+
+        residual = x if self.residual is None else self.residual(x)
+        
+        # Pass through the first convolutional layer
+        x = self.conv1(x)
+        x = self.bn1(x)
+        x = self.gelu(x)
+        x = self.dropout1(x)
+        
+        # Pass through the second convolutional layer
+        x = self.conv2(x)
+        x = self.bn2(x)
+        x = self.dropout2(x)
+        
+        # Add the skip connection
+        x += residual
+        x = self.gelu(x)
+  
+        return x
+        
 
 class Encoder(torch.nn.Module):
     '''
@@ -174,26 +209,23 @@ class Encoder(torch.nn.Module):
         # Food for thought -> What type of Conv layers can be used here?
         #                  -> What should be the size of input channels to the first layer?
         self.embedding = torch.nn.Sequential(
-            torch.nn.Conv1d(input_size, 64, kernel_size=3, stride=1, padding=1),
+            
+            torch.nn.Conv1d(input_size, 64, 7, stride=1, padding=3),
             torch.nn.BatchNorm1d(64),
-            torch.nn.GELU(approximate="none"), 
+            torch.nn.GELU(),
             torch.nn.Dropout(0.1, inplace=True),
             
-            torch.nn.Conv1d(64, 128, kernel_size=3, stride=1, padding=1),
-            torch.nn.BatchNorm1d(128),
-            torch.nn.GELU(approximate="none"),
-            torch.nn.Dropout(0.1, inplace=True),
-
-            
-            torch.nn.Conv1d(128, embedding_hidden_size, kernel_size=3, stride=1, padding=1),
-            torch.nn.BatchNorm1d(embedding_hidden_size),
-            torch.nn.GELU(approximate="none"),
-            torch.nn.Dropout(0.1, inplace=True),
+            ResNetBlock(in_channels=64, out_channels=64),
+            ResNetBlock(in_channels=64, out_channels=128),
+            ResNetBlock(in_channels=128, out_channels=embedding_hidden_size),
+            ResNetBlock(in_channels=embedding_hidden_size, out_channels=embedding_hidden_size),
+            ResNetBlock(in_channels=embedding_hidden_size, out_channels=embedding_hidden_size),
+            ResNetBlock(in_channels=embedding_hidden_size, out_channels=embedding_hidden_size),
         )
 
         self.BLSTMs = LSTMWrapper(
             # TODO: Look up the documentation. You might need to pass some additional parameters.
-            torch.nn.LSTM(input_size=embedding_hidden_size, hidden_size=lstm_hidden_size, num_layers=3, bidirectional=True) #TODO
+            torch.nn.LSTM(input_size=embedding_hidden_size, hidden_size=lstm_hidden_size, num_layers=4, bidirectional=True) #TODO
         )
 
         self.pBLSTMs = torch.nn.Sequential( # How many pBLSTMs are required?
@@ -252,30 +284,44 @@ class Decoder(torch.nn.Module):
             #Now you can stack your MLP layers
             # MLP layers with dropout for regularization
             
-            torch.nn.Linear(2 * lstm_hidden_size, lstm_hidden_size //2),
+            torch.nn.Linear(2 * lstm_hidden_size, 2*lstm_hidden_size),
             Permute(),
-            torch.nn.BatchNorm1d(lstm_hidden_size//2),
-            Permute(),
-            torch.nn.GELU(),
-            torch.nn.Dropout(0.2),
-            
-            torch.nn.Linear(lstm_hidden_size//2, lstm_hidden_size//2),
-            Permute(),
-            torch.nn.BatchNorm1d(lstm_hidden_size//2),
+            torch.nn.BatchNorm1d(2*lstm_hidden_size),
             Permute(),
             torch.nn.GELU(),
             torch.nn.Dropout(0.2),
             
-            torch.nn.Linear(lstm_hidden_size//2, lstm_hidden_size//2),
+            torch.nn.Linear(2*lstm_hidden_size, 2*lstm_hidden_size),
             Permute(),
-            torch.nn.BatchNorm1d(lstm_hidden_size//2),
+            torch.nn.BatchNorm1d(2*lstm_hidden_size),
             Permute(),
             torch.nn.GELU(),
             torch.nn.Dropout(0.2),
             
+            torch.nn.Linear(2*lstm_hidden_size, lstm_hidden_size),
+            Permute(),
+            torch.nn.BatchNorm1d(lstm_hidden_size),
+            Permute(),
+            torch.nn.GELU(),
+            torch.nn.Dropout(0.2),
+            
+            
+            torch.nn.Linear(lstm_hidden_size, lstm_hidden_size),
+            Permute(),
+            torch.nn.BatchNorm1d(lstm_hidden_size),
+            Permute(),
+            torch.nn.GELU(),
+            torch.nn.Dropout(0.2),
+            
+            torch.nn.Linear(lstm_hidden_size, lstm_hidden_size),
+            Permute(),
+            torch.nn.BatchNorm1d(lstm_hidden_size),
+            Permute(),
+            torch.nn.GELU(),
+            torch.nn.Dropout(0.2),
             
             # Final projection layer to output_size (number of phonemes)
-            torch.nn.Linear(lstm_hidden_size//2, output_size)
+            torch.nn.Linear(lstm_hidden_size, output_size)
 
         )
 
@@ -293,12 +339,13 @@ class Decoder(torch.nn.Module):
 
         return log_probs
     
-class ASRModel(torch.nn.Module):
+class ASRModelLarge(torch.nn.Module):
 
     def __init__(self, input_size, embed_size= 192, lstm_hidden_size = 64, output_size= len(PHONEMES)):
         super().__init__()
 
         # Initialize encoder and decoder
+
         self.encoder        = Encoder(input_size=input_size, embedding_hidden_size= embed_size, lstm_hidden_size=lstm_hidden_size) # TODO: Initialize Encoder
         self.decoder        = Decoder(lstm_hidden_size=lstm_hidden_size, output_size=output_size) # TODO: Initialize Decoder
 
@@ -310,10 +357,12 @@ class ASRModel(torch.nn.Module):
 
         return decoder_out, encoder_lens
     
+
+
 if __name__ == "__main__":
     
     #get model number of params
-    model = ASRModel(input_size=28, embed_size=config["embed_size"], lstm_hidden_size=config["lstm_hidden_size"], output_size=len(PHONEMES))
+    model = ASRModelLarge(input_size=28, embed_size=256, lstm_hidden_size=256)
     x = torch.tensor(np.random.rand(10, 100, 28)).float()
     lx = torch.tensor([100]*10)
     print(summary(model, input_data = [x, lx]))

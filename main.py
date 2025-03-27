@@ -24,7 +24,7 @@ from dataset import AudioDataset
 from BasicNetwork import BasicNetwork
 
 from phonemes_utils import PHONEMES, LABELS, BLANK_IDX
-from decode_utils import decode_prediction, calculate_levenshtein
+from ASR_model_large import ASRModelLarge
 from train_utils import train_model, validate_model
 
 train_data = AudioDataset(config['root_dir'], 'train-clean-100', config['subset'])
@@ -38,7 +38,14 @@ print("Train dataset samples = {}, batches = {}".format(train_data.__len__(), le
 
 
 
-model = ASRModel(
+#model = ASRModel(
+#    input_size  = config["mfcc_features"],  #TODO,
+#    embed_size  = config["embed_size"], #TODO
+#    lstm_hidden_size=config["lstm_hidden_size"], 
+#    output_size = len(PHONEMES)
+#).to(device)
+
+model = ASRModelLarge(
     input_size  = config["mfcc_features"],  #TODO,
     embed_size  = config["embed_size"], #TODO
     lstm_hidden_size=config["lstm_hidden_size"], 
@@ -70,21 +77,19 @@ scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max = config
 scaler = torch.cuda.amp.GradScaler()
 
 RESUME_TRAINING = False
-
 # If you are resuming an old run
 if config["use_wandb"]:
 
-   
 
     # Create your wandb run
 
-    run_name = 'ASR_model-{}'.format(datetime.datetime.now().strftime("%m%d-%H%M%S"))
+    run_name = 'ASR_model_large-{}'.format(datetime.datetime.now().strftime("%m%d-%H%M%S"))
     
     wandb.login(key="11902c0c8e2c6840d72bf65f04894b432d85f019") #TODO
 
     if RESUME_TRAINING:
         run = wandb.init(
-            id     = "rofi9kkm", ### Insert specific run id here if you want to resume a previous run
+            id     = "m0s2k2bv", ### Insert specific run id here if you want to resume a previous run
             resume = "must", ### You need this to resume previous runs
             project = "hw3p2", ### Project should be created in your wandb
         )
@@ -152,16 +157,19 @@ def load_model(path, model, optimizer= None, scheduler= None, scaler = None, met
     return [model, optimizer, scheduler, epoch, metric]
 
 
-
-checkpoint_best_model_filename = 'checkpoint-best-model.pth_{}'.format(run_name)
-best_model_path = os.path.join(checkpoint_root, checkpoint_best_model_filename)
-
 last_epoch_completed = 0
 best_lev_dist = float('inf')
 
 
 if RESUME_TRAINING:
+    checkpoint_best_model_filename = 'checkpoint-best-model.pth_ASR_model-0325-175432'
+    best_model_path = os.path.join(checkpoint_root, checkpoint_best_model_filename)
     model, optimizer, scheduler, last_epoch_completed, best_lev_dist = load_model(best_model_path, model, optimizer, scheduler, scaler, 'valid_dist')
+
+
+#scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
+#    optimizer, T_0=5, T_mult=1, eta_min=1e-7, last_epoch=last_epoch_completed-1 
+#)
 
 for epoch in range(last_epoch_completed, config['epochs']):
 
