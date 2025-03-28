@@ -163,12 +163,12 @@ class ResNetBlock(torch.nn.Module):
         self.conv1 = torch.nn.Conv1d(in_channels, out_channels, kernel_size, stride, padding)
         self.bn1 = torch.nn.BatchNorm1d(out_channels)
         self.gelu = torch.nn.GELU()
-        self.dropout1 = torch.nn.Dropout(0.1, inplace=True)
+        self.dropout1 = torch.nn.Dropout(0.3, inplace=True)
         
         # Second convolutional layer
         self.conv2 = torch.nn.Conv1d(out_channels, out_channels, kernel_size, stride, padding)
         self.bn2 = torch.nn.BatchNorm1d(out_channels)
-        self.dropout2 = torch.nn.Dropout(0.1, inplace=True)
+        self.dropout2 = torch.nn.Dropout(0.3, inplace=True)
         
         # Optional 1x1 convolution for matching dimensions if needed
         self.residual = torch.nn.Conv1d(in_channels, out_channels, kernel_size=1) if in_channels != out_channels else None
@@ -217,15 +217,14 @@ class Encoder(torch.nn.Module):
             
             ResNetBlock(in_channels=64, out_channels=64),
             ResNetBlock(in_channels=64, out_channels=128),
-            ResNetBlock(in_channels=128, out_channels=embedding_hidden_size),
-            ResNetBlock(in_channels=embedding_hidden_size, out_channels=embedding_hidden_size),
-            ResNetBlock(in_channels=embedding_hidden_size, out_channels=embedding_hidden_size),
+            ResNetBlock(in_channels=128, out_channels=256),
+            ResNetBlock(in_channels=256, out_channels=embedding_hidden_size),
             ResNetBlock(in_channels=embedding_hidden_size, out_channels=embedding_hidden_size),
         )
 
         self.BLSTMs = LSTMWrapper(
             # TODO: Look up the documentation. You might need to pass some additional parameters.
-            torch.nn.LSTM(input_size=embedding_hidden_size, hidden_size=lstm_hidden_size, num_layers=4, bidirectional=True) #TODO
+            torch.nn.LSTM(input_size=embedding_hidden_size, hidden_size=lstm_hidden_size, num_layers=2, bidirectional=True) #TODO
         )
 
         self.pBLSTMs = torch.nn.Sequential( # How many pBLSTMs are required?
@@ -235,9 +234,9 @@ class Encoder(torch.nn.Module):
             # https://github.com/salesforce/awd-lstm-lm/blob/dfd3cb0235d2caf2847a4d53e1cbd495b781b5d2/locked_dropout.py#L5
             # ...
             pBLSTM(2* lstm_hidden_size, lstm_hidden_size),
-            LockedDropout(0.2),
+            LockedDropout(0.3),
             pBLSTM(2* lstm_hidden_size, lstm_hidden_size),
-            LockedDropout(0.2),
+            LockedDropout(0.3),
             #pBLSTM(2* lstm_hidden_size, lstm_hidden_size),
             #LockedDropout(0.2),
         )
@@ -298,15 +297,15 @@ class Decoder(torch.nn.Module):
             torch.nn.GELU(),
             torch.nn.Dropout(0.2),
             
-            torch.nn.Linear(2*lstm_hidden_size, lstm_hidden_size),
+            torch.nn.Linear(2*lstm_hidden_size, 2*lstm_hidden_size),
             Permute(),
-            torch.nn.BatchNorm1d(lstm_hidden_size),
+            torch.nn.BatchNorm1d(2*lstm_hidden_size),
             Permute(),
             torch.nn.GELU(),
             torch.nn.Dropout(0.2),
             
             
-            torch.nn.Linear(lstm_hidden_size, lstm_hidden_size),
+            torch.nn.Linear(2*lstm_hidden_size, lstm_hidden_size),
             Permute(),
             torch.nn.BatchNorm1d(lstm_hidden_size),
             Permute(),
@@ -326,6 +325,8 @@ class Decoder(torch.nn.Module):
         )
 
         self.softmax = torch.nn.LogSoftmax(dim=2)
+        self.residual_projection = torch.nn.Linear(2 * lstm_hidden_size, output_size)
+
 
 
     def forward(self, encoder_out):
@@ -333,6 +334,17 @@ class Decoder(torch.nn.Module):
         #TODO: Call your MLP
         
         out = self.mlp(encoder_out)  
+        # Add residual connection
+        if encoder_out.shape[-1] != out.shape[-1]:
+            # Project encoder_out to match mlp_out dimensions
+            residual = self.residual_projection(encoder_out)
+        else:
+            residual = encoder_out
+
+        # Add the residual connection
+        out = out + residual
+        out = torch.nn.GELU()(out)
+        
         log_probs = self.softmax(out)
 
         #TODO: Think about what should be the final output of the decoder for classification
@@ -362,7 +374,7 @@ class ASRModelLarge(torch.nn.Module):
 if __name__ == "__main__":
     
     #get model number of params
-    model = ASRModelLarge(input_size=28, embed_size=256, lstm_hidden_size=256)
+    model = ASRModelLarge(input_size=28, embed_size=350, lstm_hidden_size=350)
     x = torch.tensor(np.random.rand(10, 100, 28)).float()
     lx = torch.tensor([100]*10)
     print(summary(model, input_data = [x, lx]))

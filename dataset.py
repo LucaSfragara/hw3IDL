@@ -101,7 +101,11 @@ class AudioDataset(torch.utils.data.Dataset):
         # WHAT SHOULD THE LENGTH OF THE DATASET BE?
         self.length = len(mfcc_names) 
 
-        self.time_masking = torchaudio.transforms.TimeMasking(time_mask_param=config["augment_time_mask_max"]) #was 10 in original run
+        self.time_masking1 = torchaudio.transforms.TimeMasking(time_mask_param=config["augment_time_mask_max"]) #was 10 in original run
+        self.time_masking2 = torchaudio.transforms.TimeMasking(time_mask_param=config["augment_time_mask_max"]) #was 10 in original run
+        self.time_masking3 = torchaudio.transforms.TimeMasking(time_mask_param=config["augment_time_mask_max"]) #was 10 in original run
+        
+        
         self.freq_masking = torchaudio.transforms.FrequencyMasking(freq_mask_param=config["augment_freq_mask_max"]) #was 10 in original run
         #TODO
         # CREATE AN ARRAY TO STORE ALL PROCESSED MFCCS AND TRANSCRIPTS
@@ -227,7 +231,10 @@ class AudioDataset(torch.utils.data.Dataset):
             if random.random() < config["augment_prob"]:
                 batch_mfcc_pad = batch_mfcc_pad.permute(0,2,1)
                 batch_mfcc_pad = self.freq_masking(batch_mfcc_pad)
-                batch_mfcc_pad = self.time_masking(batch_mfcc_pad)
+                
+                batch_mfcc_pad = self.time_masking1(batch_mfcc_pad)
+                batch_mfcc_pad = self.time_masking2(batch_mfcc_pad)
+                batch_mfcc_pad = self.time_masking3(batch_mfcc_pad)
                 batch_mfcc_pad = batch_mfcc_pad.permute(0,2,1)
        
 

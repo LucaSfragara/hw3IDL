@@ -1,3 +1,4 @@
+from tabnanny import check
 import torch
 from torchinfo import summary
 from torch.utils.data import DataLoader
@@ -79,7 +80,6 @@ scaler = torch.cuda.amp.GradScaler()
 RESUME_TRAINING = False
 # If you are resuming an old run
 if config["use_wandb"]:
-
 
     # Create your wandb run
 
@@ -166,6 +166,8 @@ if RESUME_TRAINING:
     best_model_path = os.path.join(checkpoint_root, checkpoint_best_model_filename)
     model, optimizer, scheduler, last_epoch_completed, best_lev_dist = load_model(best_model_path, model, optimizer, scheduler, scaler, 'valid_dist')
 
+checkpoint_model_name = f'checkpoint-model.pth_{run_name}'
+best_model_path = os.path.join(checkpoint_root, checkpoint_model_name)
 
 #scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
 #    optimizer, T_0=5, T_mult=1, eta_min=1e-7, last_epoch=last_epoch_completed-1 
