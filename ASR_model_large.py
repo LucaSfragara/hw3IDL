@@ -209,17 +209,9 @@ class Encoder(torch.nn.Module):
         # Food for thought -> What type of Conv layers can be used here?
         #                  -> What should be the size of input channels to the first layer?
         self.embedding = torch.nn.Sequential(
-            
-            torch.nn.Conv1d(input_size, 64, 7, stride=1, padding=3),
-            torch.nn.BatchNorm1d(64),
-            torch.nn.GELU(),
-            torch.nn.Dropout(0.1, inplace=True),
-            
-            ResNetBlock(in_channels=64, out_channels=64),
-            ResNetBlock(in_channels=64, out_channels=128),
-            ResNetBlock(in_channels=128, out_channels=256),
-            ResNetBlock(in_channels=256, out_channels=embedding_hidden_size),
-            ResNetBlock(in_channels=embedding_hidden_size, out_channels=embedding_hidden_size),
+       
+            ResNetBlock(in_channels=28, out_channels=708),
+            ResNetBlock(in_channels=708, out_channels=embedding_hidden_size),
         )
 
         self.BLSTMs = LSTMWrapper(
@@ -234,9 +226,9 @@ class Encoder(torch.nn.Module):
             # https://github.com/salesforce/awd-lstm-lm/blob/dfd3cb0235d2caf2847a4d53e1cbd495b781b5d2/locked_dropout.py#L5
             # ...
             pBLSTM(2* lstm_hidden_size, lstm_hidden_size),
-            LockedDropout(0.3),
+            #LockedDropout(0.3),
             pBLSTM(2* lstm_hidden_size, lstm_hidden_size),
-            LockedDropout(0.3),
+            #LockedDropout(0.3),
             #pBLSTM(2* lstm_hidden_size, lstm_hidden_size),
             #LockedDropout(0.2),
         )
@@ -325,8 +317,6 @@ class Decoder(torch.nn.Module):
         )
 
         self.softmax = torch.nn.LogSoftmax(dim=2)
-        self.residual_projection = torch.nn.Linear(2 * lstm_hidden_size, output_size)
-
 
 
     def forward(self, encoder_out):
@@ -334,17 +324,6 @@ class Decoder(torch.nn.Module):
         #TODO: Call your MLP
         
         out = self.mlp(encoder_out)  
-        # Add residual connection
-        if encoder_out.shape[-1] != out.shape[-1]:
-            # Project encoder_out to match mlp_out dimensions
-            residual = self.residual_projection(encoder_out)
-        else:
-            residual = encoder_out
-
-        # Add the residual connection
-        out = out + residual
-        out = torch.nn.GELU()(out)
-        
         log_probs = self.softmax(out)
 
         #TODO: Think about what should be the final output of the decoder for classification
@@ -374,7 +353,7 @@ class ASRModelLarge(torch.nn.Module):
 if __name__ == "__main__":
     
     #get model number of params
-    model = ASRModelLarge(input_size=28, embed_size=350, lstm_hidden_size=350)
+    model = ASRModelLarge(input_size=28, embed_size=354, lstm_hidden_size=354)
     x = torch.tensor(np.random.rand(10, 100, 28)).float()
     lx = torch.tensor([100]*10)
     print(summary(model, input_data = [x, lx]))
