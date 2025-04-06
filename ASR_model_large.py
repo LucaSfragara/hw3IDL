@@ -163,12 +163,12 @@ class ResNetBlock(torch.nn.Module):
         self.conv1 = torch.nn.Conv1d(in_channels, out_channels, kernel_size, stride, padding)
         self.bn1 = torch.nn.BatchNorm1d(out_channels)
         self.gelu = torch.nn.GELU()
-        self.dropout1 = torch.nn.Dropout(0.3, inplace=True)
+        self.dropout1 = torch.nn.Dropout(0.05, inplace=True)
         
         # Second convolutional layer
         self.conv2 = torch.nn.Conv1d(out_channels, out_channels, kernel_size, stride, padding)
         self.bn2 = torch.nn.BatchNorm1d(out_channels)
-        self.dropout2 = torch.nn.Dropout(0.3, inplace=True)
+        self.dropout2 = torch.nn.Dropout(0.05, inplace=True)
         
         # Optional 1x1 convolution for matching dimensions if needed
         self.residual = torch.nn.Conv1d(in_channels, out_channels, kernel_size=1) if in_channels != out_channels else None
@@ -226,9 +226,9 @@ class Encoder(torch.nn.Module):
             # https://github.com/salesforce/awd-lstm-lm/blob/dfd3cb0235d2caf2847a4d53e1cbd495b781b5d2/locked_dropout.py#L5
             # ...
             pBLSTM(2* lstm_hidden_size, lstm_hidden_size),
-            #LockedDropout(0.3),
+            LockedDropout(0.05),
             pBLSTM(2* lstm_hidden_size, lstm_hidden_size),
-            #LockedDropout(0.3),
+            LockedDropout(0.05),
             #pBLSTM(2* lstm_hidden_size, lstm_hidden_size),
             #LockedDropout(0.2),
         )
@@ -280,36 +280,23 @@ class Decoder(torch.nn.Module):
             torch.nn.BatchNorm1d(2*lstm_hidden_size),
             Permute(),
             torch.nn.GELU(),
-            torch.nn.Dropout(0.2),
-            
-            torch.nn.Linear(2*lstm_hidden_size, 2*lstm_hidden_size),
-            Permute(),
-            torch.nn.BatchNorm1d(2*lstm_hidden_size),
-            Permute(),
-            torch.nn.GELU(),
-            torch.nn.Dropout(0.2),
-            
-            torch.nn.Linear(2*lstm_hidden_size, 2*lstm_hidden_size),
-            Permute(),
-            torch.nn.BatchNorm1d(2*lstm_hidden_size),
-            Permute(),
-            torch.nn.GELU(),
-            torch.nn.Dropout(0.2),
-            
+            torch.nn.Dropout(0.05),
             
             torch.nn.Linear(2*lstm_hidden_size, lstm_hidden_size),
             Permute(),
             torch.nn.BatchNorm1d(lstm_hidden_size),
             Permute(),
             torch.nn.GELU(),
-            torch.nn.Dropout(0.2),
+            torch.nn.Dropout(0.05),
             
             torch.nn.Linear(lstm_hidden_size, lstm_hidden_size),
             Permute(),
             torch.nn.BatchNorm1d(lstm_hidden_size),
             Permute(),
             torch.nn.GELU(),
-            torch.nn.Dropout(0.2),
+            torch.nn.Dropout(0.05),
+            
+            
             
             # Final projection layer to output_size (number of phonemes)
             torch.nn.Linear(lstm_hidden_size, output_size)

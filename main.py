@@ -72,12 +72,13 @@ optimizer =  torch.optim.AdamW(model.parameters(), lr = config["learning_rate"],
 decoder = cuda_ctc_decoder(tokens=LABELS, nbest=1, beam_size=config['train_beam_width']) 
 
 #scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=5, T_mult=2, eta_min=config["learning_rate_min"], last_epoch=-1)
-scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max = config["epochs"], eta_min=config["learning_rate_min"], last_epoch=-1)
-
+#scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max = config["epochs"], eta_min=config["learning_rate_min"], last_epoch=-1)
+scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+    optimizer, mode='min', factor=0.8, patience=5, threshold=1e-4, threshold_mode='rel', cooldown=0, min_lr=config["learning_rate_min"], eps=1e-8)
 # Mixed Precision, if you need it
 scaler = torch.cuda.amp.GradScaler()
 
-RESUME_TRAINING = False
+RESUME_TRAINING = True
 # If you are resuming an old run
 if config["use_wandb"]:
 
@@ -89,7 +90,7 @@ if config["use_wandb"]:
 
     if RESUME_TRAINING:
         run = wandb.init(
-            id     = "m0s2k2bv", ### Insert specific run id here if you want to resume a previous run
+            id     = "xi0eiot4", ### Insert specific run id here if you want to resume a previous run
             resume = "must", ### You need this to resume previous runs
             project = "hw3p2", ### Project should be created in your wandb
         )
@@ -162,11 +163,12 @@ best_lev_dist = float('inf')
 
 
 if RESUME_TRAINING:
-    checkpoint_best_model_filename = 'checkpoint-best-model.pth_ASR_model-0325-175432'
+    checkpoint_best_model_filename = 'checkpoint-model.pth_ASR_model_large-0328-151327'
     best_model_path = os.path.join(checkpoint_root, checkpoint_best_model_filename)
-    model, optimizer, scheduler, last_epoch_completed, best_lev_dist = load_model(best_model_path, model, optimizer, scheduler, scaler, 'valid_dist')
+    model, optimizer, _, last_epoch_completed, best_lev_dist = load_model(best_model_path, model, optimizer, None, scaler, 'valid_dist')
 
-checkpoint_model_name = f'checkpoint-model.pth_{run_name}'
+#checkpoint_model_name = f'checkpoint-model.pth_{run_name}'
+checkpoint_model_name = "checkpoint-model.pth_ASR_model_large-0328-151327"
 best_model_path = os.path.join(checkpoint_root, checkpoint_model_name)
 
 #scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
@@ -183,7 +185,7 @@ for epoch in range(last_epoch_completed, config['epochs']):
     valid_loss, valid_dist = validate_model(model, val_loader, decoder, device, criterion, LABELS)
 
 
-    scheduler.step()
+    scheduler.step(valid_dist)
 
     print("\tTrain Loss {:.04f}\t Learning Rate {:.07f}".format(train_loss, curr_lr))
     print("\tVal Dist {:.04f}\t Val Loss {:.04f}".format(valid_dist, valid_loss))

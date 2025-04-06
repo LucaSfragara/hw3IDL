@@ -177,18 +177,18 @@ class Encoder(torch.nn.Module):
             torch.nn.Conv1d(input_size, 64, kernel_size=3, stride=1, padding=1),
             torch.nn.BatchNorm1d(64),
             torch.nn.GELU(approximate="none"), 
-            torch.nn.Dropout(0.1, inplace=True),
+            torch.nn.Dropout(0, inplace=True),
             
             torch.nn.Conv1d(64, 128, kernel_size=3, stride=1, padding=1),
             torch.nn.BatchNorm1d(128),
             torch.nn.GELU(approximate="none"),
-            torch.nn.Dropout(0.1, inplace=True),
+            torch.nn.Dropout(0, inplace=True),
 
             
             torch.nn.Conv1d(128, embedding_hidden_size, kernel_size=3, stride=1, padding=1),
             torch.nn.BatchNorm1d(embedding_hidden_size),
             torch.nn.GELU(approximate="none"),
-            torch.nn.Dropout(0.1, inplace=True),
+            torch.nn.Dropout(0, inplace=True),
         )
 
         self.BLSTMs = LSTMWrapper(
@@ -203,9 +203,9 @@ class Encoder(torch.nn.Module):
             # https://github.com/salesforce/awd-lstm-lm/blob/dfd3cb0235d2caf2847a4d53e1cbd495b781b5d2/locked_dropout.py#L5
             # ...
             pBLSTM(2* lstm_hidden_size, lstm_hidden_size),
-            LockedDropout(0.2),
+            LockedDropout(0.1),
             pBLSTM(2* lstm_hidden_size, lstm_hidden_size),
-            LockedDropout(0.2),
+            LockedDropout(0.1),
             #pBLSTM(2* lstm_hidden_size, lstm_hidden_size),
             #LockedDropout(0.2),
         )
@@ -257,14 +257,14 @@ class Decoder(torch.nn.Module):
             torch.nn.BatchNorm1d(lstm_hidden_size//2),
             Permute(),
             torch.nn.GELU(),
-            torch.nn.Dropout(0.2),
+            torch.nn.Dropout(0.1),
             
             torch.nn.Linear(lstm_hidden_size//2, lstm_hidden_size//2),
             Permute(),
             torch.nn.BatchNorm1d(lstm_hidden_size//2),
             Permute(),
             torch.nn.GELU(),
-            torch.nn.Dropout(0.2),
+            torch.nn.Dropout(0.1),
             
             torch.nn.Linear(lstm_hidden_size//2, lstm_hidden_size//2),
             Permute(),

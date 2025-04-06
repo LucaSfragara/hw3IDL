@@ -5,14 +5,15 @@ from torch.utils.data import DataLoader
 from torchaudio.models.decoder import cuda_ctc_decoder
 from config import config
 from dataset import AudioDatasetTest, AudioDataset
-from ASR_model import ASRModel
+from ASR_model_large import ASRModelLarge
+import os
 from phonemes_utils import PHONEMES, LABELS
 from decode_utils import decode_prediction
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 print("Device: ", device)
 
-model = ASRModel(
+model = ASRModelLarge(
     input_size  = config["mfcc_features"],  #TODO,
     embed_size  = config["embed_size"], #TODO
     lstm_hidden_size=config["lstm_hidden_size"], 
@@ -28,7 +29,7 @@ test_loader = DataLoader(audio_test_dataset, batch_size=128, shuffle=False, coll
 
 
 
-loaded_state = torch.load("checkpoints/checkpoint-best-model.pth_ASR_model-0325-175432")
+loaded_state = torch.load("checkpoints/checkpoint-model.pth_ASR_model_large-0328-151327")
 print(loaded_state["valid_dist"])
 model.load_state_dict(loaded_state['model_state_dict'])
 
@@ -58,3 +59,6 @@ if results:
 
 data_dir = "submission.csv"
 df.to_csv(data_dir, index = False)
+
+#run terminal command
+os.system("kaggle competitions submit -c hw-3-p-2-automatic-speech-recognition-asr-11-785 -f submission.csv -m 'hello'")
